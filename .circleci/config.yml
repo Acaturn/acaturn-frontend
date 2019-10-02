@@ -1,37 +1,68 @@
 # Javascript Node CircleCI 2.0 configuration file
 #
 # Check https://circleci.com/docs/2.0/language-javascript/ for more details
-#
-version: 2
-jobs:
-  build:
+
+version: 2.1
+executors:
+  node:
+    parameters:
+      image:
+        type: string
+        default: "10"
     docker:
-    # specify the version you desire here
     - image: circleci/node:10
+aliases:
+  restore_cache: &restore_cache
+    restore_cache:
+      name: Restore Npm Package Cache
+      keys:
+      - v{{ .Environment.versionCache }}-deps-{{ .Branch }}-{{ checksum "package-lock.json" }}-{{ checksum ".circleci/config.yml" }}
 
-    # Specify service dependencies here if necessary
-    # CircleCI maintains a library of pre-built images
-    # documented at https://circleci.com/docs/2.0/circleci-images/
-    # - image: circleci/mongo:3.4.4
+  install_node_modules: &install_node_modules
+    run:
+      name: Install NPM dependencies
+      command: npm install
 
-    working_directory: ~/repo
-
+  save_cache: &save_cache
+    save_cache:
+      name: Save NPM modules cache
+      key: v{{ .Environment.versionCache }}-deps-{{ .Branch }}-{{ checksum "package-lock.json" }}-{{ checksum ".circleci/config.yml" }}
+      paths:
+      - ./node_modules/
+jobs:
+  install_dependencies:
+    executor: node
     steps:
     - checkout
-
-    # Download and cache dependencies
-    - restore_cache:
-        keys:
-        - v1-dependencies-{{ checksum "package.json" }}
-        # fallback to using the latest cache if no exact match is found
-        - v1-dependencies-
-
-    - run: npm install
-
-    - save_cache:
-        paths:
-        - node_modules
-        key: v1-dependencies-{{ checksum "package.json" }}
-
-    # run tests!
-    - run: npm run test
+    - <<: *restore_cache
+    - <<: *install_node_modules
+    - <<: *save_cache
+  lint:
+    executor: node
+    steps:
+    - checkout
+    - <<: *restore_cache
+    - <<: *install_node_modules
+    - run:
+        name: Check convention
+        command: npm run lint
+  test:
+    executor: node
+    steps:
+    - checkout
+    - <<: *restore_cache
+    - <<: *install_node_modules
+    - run:
+        name: Run tests
+        command: npm run test
+workflows:
+  version: 2
+  install_and_test:
+    jobs:
+      - install_dependencies
+      - test:
+          requires:
+            - install_dependencies
+      - lint:
+          requires:
+            - install_dependencies
